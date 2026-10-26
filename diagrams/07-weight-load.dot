@@ -1,0 +1,25 @@
+digraph W {
+  graph [rankdir=TB, nodesep=0.25, ranksep=0.38, fontname="Noto Serif CJK SC", pad=0.12];
+  node  [shape=box, style="rounded,filled", fontname="Noto Serif CJK SC", fontsize=9, color="#8fa3b8", fillcolor="#ffffff", penwidth=0.9];
+  edge  [color="#8494a7", arrowsize=0.5, fontname="Noto Serif CJK SC", fontsize=8.3];
+
+  a [fillcolor="#eef6fb", label="config.json\narchitectures[0]"]
+  b [fillcolor="#fbf3fd", label="models/register\n_MODEL_REGISTRY[arch]\n→ ModelSpec"]
+  c [fillcolor="#fbf3fd", label="parse_config(HF cfg)\n→ ModelConfig\n(attention_groups · quant)"]
+  d [fillcolor="#fdf8ec", label="checkpoint_quant_config\n→ set_quant_config\n(进程全局)"]
+  e [fillcolor="#fdf8ec", label="Engine._load_weights\n→ models/weight.load_weight"]
+  f [fillcolor="#eef8f0", label="FTW 快路径？\nis_ftw_checkpoint"]
+  g [fillcolor="#eef8f0", label="每族 iter_weights\n(name, tensor) 流"]
+  h [fillcolor="#fbf3fd", label="loader.py\nshard_tensor (TP)\niter_merged_tensors (qkv/gate_up)\niter_stacked_experts"]
+  i [fillcolor="#fdf8ec", label="load_state_dict\n→ finalize_quant"]
+  j [fillcolor="#fdf8ec", label="常驻专家?\nload_expert_banks → GPU banks"]
+  k [fillcolor="#f2f4f7", label="offload 策略?\n专家留主机 pinned banks\n(pin-after-fill)"]
+  z [fillcolor="#f2f4f7", label="显存预算\nresolve_moe_cache_auto\n→ plan_cache_budget"]
+
+  a->b->c->d->e->f
+  f->g [label=" 否"]
+  f->h [label=" 是 (iter_ftw_weights)"]
+  g->h->i->j
+  i->k [style=dashed]
+  e->z [style=dotted, label=" 决定 MoE/KV 切分"]
+}

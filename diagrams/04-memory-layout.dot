@@ -1,0 +1,36 @@
+digraph M {
+  graph [rankdir=TB, nodesep=0.15, ranksep=0.28, fontname="Noto Serif CJK SC", pad=0.12];
+  node  [shape=plaintext, fontname="Noto Serif CJK SC", fontsize=10, margin=0];
+  edge  [style=invis];
+
+  gpu [label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5" COLOR="#c9826b">
+      <TR><TD COLSPAN="2" BGCOLOR="#f6ddd2"><B>GPU HBM</B>　预算 = memory_ratio × 预载前空闲显存（默认 0.9）；(1-ratio) 留作 graph/激活余量</TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">① 常驻权重</TD><TD ALIGN="LEFT">fused 策略：dense + <B>全部</B>专家；offload 策略：仅 dense</TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">② KV 池</TD><TD ALIGN="LEFT"><FONT FACE="monospace">[num_pages × page_size, heads, head_dim]</FONT>　页大小：默认 1，DSV4=128，TRTLLM=16/32/64</TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">③ GDN 状态池</TD><TD ALIGN="LEFT"><FONT FACE="monospace">num_slots × slot_states</FONT>　仅 linear-attention（hybrid）模型</TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">④ MoE 专家槽缓存</TD><TD ALIGN="LEFT"><FONT FACE="monospace">cache_size × per_slot_bytes</FONT> × 每层 bank 数　<B>所有层共享一个池</B>；不变量 cache_size ≥ 2E</TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">⑤ page_table + token_pool</TD><TD ALIGN="LEFT"><FONT FACE="monospace">[max_running_req+1, width]</FONT> int32 × 2　token_pool 与 page_table <B>同形</B></TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">⑥ 图捕获静态缓冲</TD><TD ALIGN="LEFT">input_ids/out_loc/positions/table_idx <FONT FACE="monospace">[max_bs]</FONT>；<B>logits <FONT FACE="monospace">[max_bs, vocab]</FONT> fp32</B>（160×150k×4B ≈ 96 MB）</TD></TR>
+      <TR><TD BGCOLOR="#fdf1ec" ALIGN="LEFT">⑦ 激活 / workspace</TD><TD ALIGN="LEFT">含 CUDA graph 共享 mempool（所有 bs 档位复用同一个 pool）</TD></TR>
+    </TABLE>>];
+
+  host [label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5" COLOR="#7ea6c4">
+      <TR><TD COLSPAN="2" BGCOLOR="#d9e8f2"><B>主机内存</B>　PINNED 部分可被 GPU 零拷贝读；LOCKED/PAGEABLE 只能 CPU 算</TD></TR>
+      <TR><TD BGCOLOR="#eef6fb" ALIGN="LEFT">⑧ 专家 bank_sources</TD><TD ALIGN="LEFT">每层一个 <FONT FACE="monospace">[E, ...]</FONT> 张量；exact-size cudaHostAlloc + pin-after-fill + mlock</TD></TR>
+      <TR><TD BGCOLOR="#eef6fb" ALIGN="LEFT">⑨ row_store staging</TD><TD ALIGN="LEFT">磁盘表的一批行 + wait/signal flag（stream memop 让图内 lookup 等宿主填充）</TD></TR>
+      <TR><TD BGCOLOR="#eef6fb" ALIGN="LEFT">⑩ PLE / Engram 常驻表</TD><TD ALIGN="LEFT">PLE n-gram 表 47.7 GiB；Engram 的 scale 6 GiB（表体 98 GB/层 留在磁盘）</TD></TR>
+      <TR><TD BGCOLOR="#eef6fb" ALIGN="LEFT">⑪ CPU-MoE pinned IO</TD><TD ALIGN="LEFT">x / ids / w / y + 每 (layer,bs) 的 ready/done/err flag slot</TD></TR>
+    </TABLE>>];
+
+  disk [label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5" COLOR="#9aa4b2">
+      <TR><TD COLSPAN="2" BGCOLOR="#e9ecf1"><B>磁盘</B>　O_DIRECT / io_uring（绕过 page cache）</TD></TR>
+      <TR><TD BGCOLOR="#f2f4f7" ALIGN="LEFT">safetensors / FTW 分片</TD><TD ALIGN="LEFT">权重来源；FTW = 连续对齐字节区 + 分片 + JSON 索引</TD></TR>
+      <TR><TD BGCOLOR="#f2f4f7" ALIGN="LEFT">Engram 表分片</TD><TD ALIGN="LEFT">98 GB/层，按 token 读 24 行（去重）</TD></TR>
+    </TABLE>>];
+
+  gpu -> host [label=" ④ ↔ ⑧ 专家搬运：未命中 gather，PCIe 实测 ~31 GB/s（HBM ~3 TB/s）\n ⑤ ↔ ⑨ 磁盘表：O_DIRECT 读 → pinned staging", style=solid, color="#b5533c", fontname="Noto Serif CJK SC", fontsize=9, fontcolor="#8d3f2c", penwidth=1.2];
+  host -> disk [label=" 启动装载 / 按需读取", style=solid, color="#7b6b8a", fontname="Noto Serif CJK SC", fontsize=9, fontcolor="#5f5270"];
+}

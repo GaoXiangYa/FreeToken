@@ -1,0 +1,28 @@
+digraph P {
+  graph [rankdir=LR, nodesep=0.35, ranksep=1.25, fontname="Noto Serif CJK SC", pad=0.15];
+  node  [shape=box, style="rounded,filled", fontname="Noto Serif CJK SC", fontsize=9.5, color="#8fa3b8", penwidth=0.9];
+  edge  [fontname="Noto Serif CJK SC", fontsize=8.5, fontcolor="#4a5a6b", arrowsize=0.6];
+
+  client [shape=box, fillcolor="#f7f7f7", label="HTTP 客户端\n(curl / SDK / 桌面端 / shell)"]
+  daemon [fillcolor="#eef6fb", label="ft daemon\n:1900  torch-free\n单实例 flock + 监督"]
+  main   [fillcolor="#eef6fb", label="uvicorn 主进程\nFastAPI · FrontendManager\nSSE · 准入 · 统计"]
+  tokw   [fillcolor="#eef8f0", label="Tokenizer worker × N\n(持 transformers，无 GPU)"]
+  detok  [fillcolor="#eef8f0", label="Detokenizer worker\n增量解码 + UTF-8/stop 回退"]
+  sched  [fillcolor="#fdf8ec", label="Scheduler × TP rank\nEngine + GPU + 全部内存池"]
+  disk   [shape=cylinder, fillcolor="#f2f4f7", label="checkpoint / FTW\n/ Engram 分片"]
+
+  client -> main [label=" HTTP :1919\n/v1/chat/completions", color="#b5533c", penwidth=1.4]
+  client -> daemon [label=" HTTP :1900\n/engine/*", color="#3d7ea6", style=dashed]
+  daemon -> main  [label=" /health  /v1/stats\n/v1/admin/prepare-stop", color="#3d7ea6", style=dashed]
+  daemon -> sched [label=" 信号 + pidfile\n(SIGTERM/grace)", color="#8a6d3b", style=dotted]
+
+  main -> tokw [label=" TokenizeMsg\n ipc ft3", color="#4a7c59", penwidth=1.3]
+  tokw -> sched [label=" UserMsg\n ipc ft0", color="#4a7c59", penwidth=1.3]
+  sched -> detok [label=" DetokenizeMsg\n ipc ft1", color="#4a7c59", penwidth=1.3]
+  detok -> main [label=" UserReply\n ipc ft4", color="#4a7c59", penwidth=1.3]
+  sched -> sched [label=" TP rank0 → 其它 rank\nipc ft2 广播", color="#4a7c59", style=dashed]
+
+  sched -> disk [label=" 权重 / 磁盘表\nO_DIRECT", color="#7b6b8a", style=dotted, constraint=false]
+
+  {rank=same; client; daemon; main}
+}

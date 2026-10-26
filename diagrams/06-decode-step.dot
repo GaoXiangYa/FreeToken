@@ -1,0 +1,30 @@
+digraph T {
+  graph [rankdir=LR, nodesep=0.16, ranksep=0.5, fontname="Noto Serif CJK SC", pad=0.12];
+  node  [shape=box, style="rounded,filled", fontname="Noto Serif CJK SC", fontsize=8.8, color="#8fa3b8", fillcolor="#ffffff", penwidth=0.9, width=1.55];
+  edge  [color="#8494a7", arrowsize=0.5, fontname="Noto Serif CJK SC", fontsize=7.8];
+
+  subgraph cluster_s {
+    label=<<B>self.stream（调度侧）</B>>; fontsize=10; color="#a8c3d8"; style="rounded,filled"; fillcolor="#eef6fb";
+    s1 [label="收消息 + 准入\n(ZMQ, 与 N 批并行)"]
+    s2 [label="组批 N\nallocate_paged\npositions / metadata\nSampler.prepare"]
+    s3 [label="排空 N-1\ncopy_done.sync()\nEOS/stop · cache_req"]
+    s1 -> s2 -> s3
+  }
+  subgraph cluster_e {
+    label=<<B>engine.stream（执行侧）</B>>; fontsize=10; color="#e0b6a5"; style="rounded,filled"; fillcolor="#fdf1ec";
+    e1 [label="token_pool gather\n→ batch.input_ids"]
+    e2 [label="copy_from: ≤5 次 D2D\nprepare_for_replay: 3~4 次"]
+    e3 [label="g.replay()\n一次 cudaGraphLaunch\n= embed + 所有层 + LM head"]
+    e4 [label="采样（图外）\nargmax / top-k/p"]
+    e5 [label="int32 → D2H\ncopy_done_event.record"]
+    e1 -> e2 -> e3 -> e4 -> e5
+  }
+
+  s2 -> e1 [label=" fence A\nwait_stream", color="#b5533c", penwidth=1.3]
+  e1 -> e3 [label=" fence B\nengine.stream\n.wait(self.stream)", color="#3d7ea6", style=dashed]
+  e5 -> s3 [label=" fence C\nself.stream\n.wait(engine)", color="#3d7ea6", penwidth=1.3]
+  s3 -> s1 [label=" 下一轮", style=dotted, color="#8a6d3b"]
+
+  note [shape=note, fillcolor="#fff8e1", fontsize=7.8, label="设计意图：发射 N 之后\nCPU 去排空 N-1，\n与 GPU 上的 N 重叠。\n↳ 前提是 D2H 非阻塞（需 pinned）"]
+  e5 -> note [style=dotted, arrowhead=none, color="#b5a36a"]
+}

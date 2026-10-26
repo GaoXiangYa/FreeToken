@@ -1,0 +1,60 @@
+digraph L {
+  graph [rankdir=TB, nodesep=0.25, ranksep=0.42, fontname="Noto Serif CJK SC", pad=0.15, newrank=true];
+  node  [shape=box, style="rounded,filled", fontname="Noto Serif CJK SC", fontsize=9.5, color="#8fa3b8", fillcolor="#ffffff", penwidth=0.9];
+  edge  [color="#9aa8b8", arrowsize=0.55, style=invis];
+
+  subgraph cluster_4 {
+    label=<<B>L4 接入层</B>  server 11,312 · daemon 3,057 · shell 1,515 · CLI 2,513>; fontsize=10; color="#b8cfe0"; style="rounded,filled"; fillcolor="#eef6fb";
+    node [fillcolor="#ffffff"];
+    http  [label="HTTP 三协议\nopenai / anthropic / responses"]
+    fe    [label="FrontendManager\n准入 · SSE · 统计"]
+    pars  [label="parser\ntool / reasoning\n4,685"]
+    dmon  [label="ft daemon\ntorch-free\n:1900"]
+    shell [label="ft shell\nTUI"]
+  }
+  subgraph cluster_3 {
+    label=<<B>L3 调度层</B>  scheduler 2,491 · message 421 · tokenizer 1,218 · llm 128>; fontsize=10; color="#bfe0c4"; style="rounded,filled"; fillcolor="#eef8f0";
+    node [fillcolor="#ffffff"];
+    sched [label="Scheduler\nrun_forever / overlap_loop\nPrefillAdder · CacheManager"]
+    msg   [label="message/\nmsgpack 线上类型"]
+    tok   [label="tokenizer worker\ntokenize / detokenize"]
+    llm   [label="llm.LLM\n离线入口"]
+  }
+  subgraph cluster_2 {
+    label=<<B>L2 执行层</B>  engine 2,495 · core 220 · attention 4,219 · kvcache 4,968 · moe 5,870>; fontsize=10; color="#e8d3a8"; style="rounded,filled"; fillcolor="#fdf8ec";
+    node [fillcolor="#ffffff"];
+    eng   [label="Engine\n配置收口 · 池 · CUDA graph\nforward_batch()"]
+    core  [label="core.py\nReq · Batch · Context"]
+    attn  [label="attention/\n9 后端 · 能力矩阵\nprefill/decode 分流"]
+    kvc   [label="kvcache/\n分页池族 +\n3 套 radix 前缀缓存"]
+    moe   [label="moe/\nOffloadMoeCache\nslot 缓存 · PCIe gather"]
+  }
+  subgraph cluster_1 {
+    label=<<B>L1 模型层</B>  models 21,243 · layers 4,420 · mm 1,014 · checkpoint 1,165>; fontsize=10; color="#dcc3e6"; style="rounded,filled"; fillcolor="#fbf3fd";
+    node [fillcolor="#ffffff"];
+    models [label="models/\n注册表 29 项 · 19 个族\nModelConfig 契约"]
+    layers [label="layers/\n并行 Linear · MoE\nnorm · rope · 激活"]
+    quant  [label="quantization/\n6 种 QuantKind\nselect_kernel"]
+    mm     [label="mm/\n占位符扩展 · 编码缓存"]
+    ftw    [label="checkpoint/\nFTW 快速加载格式"]
+  }
+  subgraph cluster_0 {
+    label=<<B>L0 内核与基础设施</B>  kernel 23,649 · utils 967 · distributed 147>; fontsize=10; color="#c3cad6"; style="rounded,filled"; fillcolor="#f2f4f7";
+    node [fillcolor="#ffffff"];
+    ktr [label="kernel/triton 15k\nkernel/fla 6k"]
+    kcs [label="kernel/csrc\nC++/CUDA 5.8k"]
+    reg [label="utils\nRegistry · ZMQ · HF 缓存"]
+    dist [label="distributed\nNCCL / pynccl"]
+  }
+
+  http -> sched [label="  ZMQ  ", style=solid, color="#e07a5f", fontname="Noto Serif CJK SC", fontsize=9, fontcolor="#b5533c"];
+  sched -> eng [label="  forward_batch()  ", style=solid, color="#e07a5f", fontname="Noto Serif CJK SC", fontsize=9, fontcolor="#b5533c"];
+  eng -> models [label="  create_model / load_weight  ", style=solid, color="#e07a5f", fontname="Noto Serif CJK SC", fontsize=9, fontcolor="#b5533c"];
+  models -> ktr [label="  算子调用  ", style=solid, color="#e07a5f", fontname="Noto Serif CJK SC", fontsize=9, fontcolor="#b5533c"];
+
+  {rank=same; http; fe; pars; dmon; shell}
+  {rank=same; sched; msg; tok; llm}
+  {rank=same; eng; core; attn; kvc; moe}
+  {rank=same; models; layers; quant; mm; ftw}
+  {rank=same; ktr; kcs; reg; dist}
+}

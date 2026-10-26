@@ -1,0 +1,67 @@
+digraph A {
+  graph [rankdir=TB, nodesep=0.2, ranksep=0.5, fontname="Noto Serif CJK SC", pad=0.12, compound=true];
+  node  [shape=box, style="rounded,filled", fontname="Noto Serif CJK SC", fontsize=8.8, color="#8fa3b8", fillcolor="#ffffff", penwidth=0.9];
+  edge  [color="#8494a7", arrowsize=0.5, fontname="Noto Serif CJK SC", fontsize=7.8, fontcolor="#5c6b7d"];
+
+  subgraph cluster_in {
+    label=<<B>接入 / 协议</B>>; fontsize=10; color="#a8c3d8"; style="rounded,filled"; fillcolor="#eef6fb";
+    ServerArgs [label="ServerArgs\n⊂ SchedulerConfig\n⊂ EngineConfig"]
+    GenSpec    [label="GenSpec\nmessages · sampling\nparser_tools"]
+    UserReply  [label="message/*\nTokenizeMsg · UserMsg\nDetokenizeMsg · UserReply"]
+  }
+  subgraph cluster_sched {
+    label=<<B>请求状态（core.py）</B>>; fontsize=10; color="#bfe0c4"; style="rounded,filled"; fillcolor="#eef8f0";
+    Req     [label="Req\ninput_ids · cached_len\ntable_idx · cache_handle\n+ GDN/SWA/锚点字段"]
+    Batch   [label="Batch\nreqs · phase · positions\nout_loc · attn_metadata\nmm_* · log_*"]
+    Ctx     [label="Context\npage_table · attn_backend\nkv_cache · moe_offload_cache\nlinear_state_pool"]
+    Sampl   [label="SamplingParams\ntemperature/top_k/top_p\nstop_strs"]
+  }
+  subgraph cluster_exec {
+    label=<<B>执行与内存</B>>; fontsize=10; color="#e0b6a5"; style="rounded,filled"; fillcolor="#fdf1ec";
+    Engine   [label="Engine\n配置收口 · 池 · 图\nforward_batch()"]
+    GraphR   [label="GraphRunner\nGraphCaptureBuffer\nbs 阶梯 · replay"]
+    Sampler  [label="Sampler\nprepare / sample"]
+    CacheM   [label="CacheManager\nfree_slots · page_table\nlock/commit/rebuild"]
+    Prefix   [label="BasePrefixCache\nRadixPrefixCache\nSWARadixCache\nHybridRadixCache"]
+    Pool     [label="BaseKVCachePool\nMHA · HybridSWA · LinearState\nDSA · QSA · BSA · DSV4(-41)"]
+    MoCache  [label="OffloadMoeCache\nslot_for_id · bank_caches\nensure_experts/copy_missing"]
+    Banks    [label="ExpertBanks\nBankSpec (量化内核拥有)"]
+  }
+  subgraph cluster_model {
+    label=<<B>模型与算子</B>>; fontsize=10; color="#dcc3e6"; style="rounded,filled"; fillcolor="#fbf3fd";
+    MS      [label="ModelSpec\narch → module/class\n+ 名称映射 + encoders"]
+    MC      [label="ModelConfig\n维度 · rope · MoE\ngroups · quant"]
+    AT      [label="AttnType (9 值)\n→ 池族 → 后端"]
+    AttnB   [label="BaseAttnBackend\n9 后端\nprepare/forward/replay"]
+    QC      [label="QuantConfig\n方言→scheme_for(prefix)"]
+    QM      [label="QuantMethod\nselect_kernel\n(unusable/worth_it)"]
+  }
+
+  ServerArgs -> Engine [label=" 构造", style=bold]
+  GenSpec -> UserReply [label=" submit → SSE", style=dashed]
+  UserReply -> Req [label=" 转成请求", style=dashed]
+  Req -> Batch [label=" 组批"]
+  Sampl -> Sampler [label=" 每步 prepare", style=dashed]
+
+  Batch -> Ctx [label=" forward_batch 压栈"]
+  Ctx -> Engine [label=" get_global_ctx()"]
+  Engine -> GraphR [label=" 捕获/replay"]
+  Engine -> Sampler [label=" 每步采样"]
+  Engine -> Pool [label=" 池 sizing/rebuild"]
+  Engine -> MoCache [label=" offload 初始化"]
+  CacheM -> Prefix [label=" match/commit"]
+  CacheM -> Pool [label=" allocate_paged"]
+  MoCache -> Banks [label=" 读写 bank"]
+  MS -> MC [label=" parse_config"]
+  MC -> AT [label=" attention_groups"]
+  MC -> QC [label=" quant"]
+  AT -> AttnB [label=" 能力矩阵选型"]
+  QC -> QM [label=" method_class"]
+  MS -> Engine [label=" model_spec", style=dotted]
+  MC -> Engine [label=" model_config", style=dotted]
+
+  {rank=same; Req; Batch; Ctx; Sampl}
+  {rank=same; Engine; GraphR; Sampler; CacheM; MoCache}
+  {rank=same; Prefix; Pool; Banks}
+  {rank=same; MS; MC; AT; AttnB; QC; QM}
+}

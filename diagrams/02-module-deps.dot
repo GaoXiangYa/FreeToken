@@ -1,0 +1,79 @@
+digraph D {
+  graph [rankdir=LR, nodesep=0.22, ranksep=1.1, fontname="Noto Serif CJK SC", pad=0.15, splines=true];
+  node  [shape=box, style="rounded,filled", fontname="Noto Serif CJK SC", fontsize=9.5, color="#8fa3b8", penwidth=0.9];
+  edge  [color="#8494a7", arrowsize=0.55, fontname="Noto Serif CJK SC", fontsize=8.5, fontcolor="#5c6b7d"];
+
+  // L4
+  node [fillcolor="#eef6fb"]; server; cli; daemon; shell;
+  // L3
+  node [fillcolor="#eef8f0"]; scheduler; message; tokenizer; llm;
+  // L2
+  node [fillcolor="#fdf8ec"]; engine; core; attention; kvcache; moe;
+  // L1
+  node [fillcolor="#fbf3fd"]; models; layers; mm; checkpoint;
+  // L0
+  node [fillcolor="#f2f4f7"]; kernel; utils; distributed;
+
+  server     [label="server"]
+  cli        [label="CLI"]
+  daemon     [label="daemon"]
+  shell      [label="shell"]
+  scheduler  [label="scheduler"]
+  message    [label="message"]
+  tokenizer  [label="tokenizer"]
+  llm        [label="llm"]
+  engine     [label="engine"]
+  core       [label="core"]
+  attention  [label="attention"]
+  kvcache    [label="kvcache"]
+  moe        [label="moe"]
+  models     [label="models"]
+  layers     [label="layers"]
+  mm         [label="mm"]
+  checkpoint [label="checkpoint"]
+  kernel     [label="kernel"]
+  utils      [label="utils"]
+  distributed[label="distributed"]
+
+  // 实测 import 次数（>=8）
+  models -> layers      [label="109", penwidth=3.0, color="#b5533c"]
+  models -> utils       [label="72",  penwidth=2.4]
+  models -> kernel      [label="55",  penwidth=2.0]
+  models -> core        [label="49",  penwidth=1.9]
+  layers -> kernel      [label="43",  penwidth=1.8]
+  moe -> kernel         [label="30",  penwidth=1.6]
+  models -> distributed [label="28",  penwidth=1.5]
+  attention -> kernel   [label="23",  penwidth=1.4]
+  engine -> moe         [label="15",  penwidth=1.2]
+  kvcache -> utils      [label="14"]
+  attention -> core     [label="13"]
+  attention -> models   [label="12"]
+  models -> attention   [label="11"]
+  layers -> moe         [label="11"]
+  scheduler -> kvcache  [label="10"]
+  kvcache -> kernel     [label="10"]
+  server -> utils       [label="9"]
+  utils -> models       [label="8"]
+  moe -> utils          [label="8"]
+  moe -> layers         [label="8"]
+  models -> moe         [label="8"]
+
+  // 少量但架构关键（虚线）
+  edge [style=dashed, color="#9aa8b8", penwidth=0.9]
+  server -> scheduler [label="2 spawn", style=dashed]
+  server -> message   [label="3", style=dashed]
+  scheduler -> message[label="4", style=dashed]
+  engine -> kvcache   [label="5", style=dashed]
+  engine -> models    [label="7", style=dashed]
+  engine -> attention [label="2", style=dashed]
+  scheduler -> attention [label="1", style=dashed]
+  llm -> scheduler    [label="继承", style=dashed]
+  checkpoint -> kernel[label="?", style=invis]
+  kernel -> utils      [label="7", style=dashed]
+
+  {rank=same; server; cli; daemon; shell}
+  {rank=same; scheduler; message; tokenizer; llm}
+  {rank=same; engine; core; attention; kvcache; moe}
+  {rank=same; models; layers; mm; checkpoint}
+  {rank=same; kernel; utils; distributed}
+}
